@@ -47,14 +47,12 @@
 
 ## 五、运行效果图
 
-![](.\access\1.png)
+![](access/1.png)
 
+![](access/2.png)
 
+![](access/3.png)
 
-![](.\access\2.png)
+![](access/4.png)
 
-![](.\access\3.png)
-
-![](.\access\4.png)
-
-![](.\access\5.png)
+![](access/5.png)
