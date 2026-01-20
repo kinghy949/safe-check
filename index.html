@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>SafeCheck - 死了么</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <!-- 引入 Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
+    <style>
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes pulse-red {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+        }
+        .animate-pulse-red { animation: pulse-red 2s infinite; }
+        @keyframes ripple {
+            0% { transform: scale(1); opacity: 0.4; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+        .ripple-effect::after {
+            content: ''; position: absolute; width: 100%; height: 100%;
+            top: 0; left: 0; background: rgba(239, 68, 68, 0.3);
+            border-radius: 50%; animation: ripple 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 flex justify-center items-center min-h-screen font-sans">
+
+    <!-- Vue App 挂载点 -->
+    <div id="app" class="relative w-[375px] h-[812px] bg-slate-50 overflow-hidden shadow-2xl rounded-[40px] border-[8px] border-slate-800">
+        
+        <!-- 1. 启动页 -->
+        <div v-if="currentView === 'splash'" 
+             class="absolute inset-0 z-50 bg-gradient-to-br from-indigo-600 to-violet-700 flex flex-col items-center justify-center transition-opacity duration-700">
+            <div class="w-24 h-24 bg-white/20 backdrop-blur-md rounded-3xl flex items-center justify-center mb-6 shadow-xl">
+                <span class="iconify text-white text-5xl" data-icon="solar:shield-check-bold"></span>
+            </div>
+            <h1 class="text-white text-3xl font-bold tracking-wider">SafeCheck</h1>
+            <p class="text-indigo-100 mt-2 opacity-80">自动签到中...</p>
+        </div>
+
+        <!-- 顶部状态栏 -->
+        <div class="absolute top-0 w-full h-11 px-6 flex justify-between items-center z-40 pointer-events-none">
+            <span class="text-xs font-semibold">{{ currentTime }}</span>
+            <div class="flex gap-1.5 items-center">
+                <span class="iconify text-xs" data-icon="solar:battery-charge-bold"></span>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <div v-if="currentView !== 'splash'" class="w-full h-full pt-11 flex flex-col">
+            
+            <div class="flex-grow overflow-y-auto hide-scrollbar pb-20 p-6 space-y-6">
+                
+                <!-- 2. 首页视图 -->
+                <div v-if="currentView === 'home'">
+                    <div class="flex justify-between items-end mb-6">
+                        <div class="space-y-1">
+                            <p class="text-slate-400 text-sm">{{ todayDate }}</p>
+                            <h2 class="text-2xl font-bold text-slate-800">你好, 独居者</h2>
+                        </div>
+                        <div class="w-10 h-10 rounded-full bg-slate-200 overflow-hidden border-2 border-white shadow-sm">
+                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="avatar">
+                        </div>
+                    </div>
+
+                    <!-- 状态卡片 (动态颜色) -->
+                    <div :class="statusCardClass" class="rounded-3xl p-6 shadow-sm border relative overflow-hidden transition-all duration-500">
+                        <div class="relative z-10 flex items-center gap-4">
+                            <div class="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center">
+                                <span class="iconify text-3xl text-white" :data-icon="statusIcon"></span>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-white text-lg">{{ statusText }}</h3>
+                                <p class="text-xs text-white/80">上次签到：{{ lastCheckinTime }}</p>
+                            </div>
+                        </div>
+                        <button @click="doCheckin" :disabled="isSafe"
+                            class="w-full mt-6 py-4 bg-white text-slate-800 rounded-2xl font-bold active:scale-95 transition-transform shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                            {{ isSafe ? '今日已自动签到' : '立即报平安' }}
+                        </button>
+                    </div>
+
+                    <!-- 紧急联系人 -->
+                    <div class="space-y-4 mt-6">
+                        <div class="flex justify-between items-center">
+                            <h4 class="font-bold text-slate-700">紧急联系人</h4>
+                        </div>
+                        <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3" v-for="contact in contacts" :key="contact.id">
+                            <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                                {{ contact.relation[0] }}
+                            </div>
+                            <div class="flex-1">
+                                <p class="font-bold text-slate-700">{{ contact.name }} ({{contact.relation}})</p>
+                                <p class="text-xs text-slate-400">{{ contact.phone }}</p>
+                            </div>
+                            <span class="text-xs px-2 py-1 bg-green-100 text-green-600 rounded-lg">已通知</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. 日历视图 (简化) -->
+                <div v-if="currentView === 'calendar'">
+                    <h2 class="text-2xl font-bold text-slate-800 mb-4">签到历史</h2>
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                         <div class="grid grid-cols-7 gap-y-4 text-center text-xs text-slate-400 mb-2">
+                            <span v-for="d in ['日','一','二','三','四','五','六']">{{d}}</span>
+                        </div>
+                        <div class="grid grid-cols-7 gap-2">
+                            <div v-for="n in 30" :key="n" 
+                                 class="aspect-square flex items-center justify-center rounded-xl text-sm font-medium"
+                                 :class="getDayClass(n)">
+                                {{ n }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. 设置视图 -->
+                <div v-if="currentView === 'settings'">
+                    <h2 class="text-2xl font-bold text-slate-800 mb-4">设置</h2>
+                    <div class="space-y-3">
+                        <div class="bg-white p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
+                            <span>预警天数阈值</span>
+                            <span class="font-bold text-indigo-600">3 天</span>
+                        </div>
+                         <div class="bg-white p-4 rounded-2xl border border-slate-100">
+                             <p class="text-sm text-slate-500 mb-2">添加联系人</p>
+                             <div class="flex gap-2">
+                                 <input v-model="newContact.name" placeholder="姓名" class="bg-slate-50 p-2 rounded-lg text-sm w-1/3">
+                                 <input v-model="newContact.phone" placeholder="电话" class="bg-slate-50 p-2 rounded-lg text-sm w-1/3">
+                                 <button @click="addContact" class="bg-indigo-600 text-white px-4 rounded-lg text-sm">添加</button>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 5. SOS 覆盖层 -->
+        <div v-if="currentView === 'sos'" class="absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-8">
+            <div class="relative w-48 h-48 flex items-center justify-center mb-12">
+                <div class="absolute inset-0 ripple-effect rounded-full"></div>
+                <div class="w-40 h-40 bg-rose-600 rounded-full flex flex-col items-center justify-center shadow-2xl animate-pulse-red relative z-10">
+                    <span class="text-white text-5xl font-black">{{ sosCount }}</span>
+                    <span class="text-rose-100 text-xs mt-1 font-bold">倒计时</span>
+                </div>
+            </div>
+            <h2 class="text-white text-2xl font-bold mb-2">{{ sosStatus }}</h2>
+            <button @click="cancelSos" class="w-full py-4 bg-white/20 text-white rounded-3xl font-bold border border-white/20 mt-8">
+                取消求助
+            </button>
+        </div>
+
+        <!-- 底部导航 -->
+        <nav v-if="currentView !== 'splash' && currentView !== 'sos'" class="absolute bottom-0 w-full h-20 bg-white/90 backdrop-blur border-t border-slate-100 flex justify-around items-center z-40 rounded-b-[40px]">
+            <button @click="currentView = 'home'" :class="{'text-indigo-600': currentView==='home'}" class="flex flex-col items-center gap-1 text-slate-400">
+                <span class="iconify text-2xl" data-icon="solar:home-2-bold"></span>
+                <span class="text-[10px] font-bold">首页</span>
+            </button>
+            
+            <button @click="triggerSosPre" class="flex flex-col items-center justify-center -mt-10">
+                <div class="w-14 h-14 bg-rose-500 rounded-full flex items-center justify-center text-white shadow-lg ring-4 ring-white active:scale-90 transition-transform">
+                    <span class="iconify text-3xl" data-icon="solar:danger-bold"></span>
+                </div>
+            </button>
+
+            <button @click="currentView = 'settings'" :class="{'text-indigo-600': currentView==='settings'}" class="flex flex-col items-center gap-1 text-slate-400">
+                <span class="iconify text-2xl" data-icon="solar:settings-bold"></span>
+                <span class="text-[10px] font-bold">设置</span>
+            </button>
+        </nav>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const currentView = ref('splash');
+                const currentTime = ref('12:00');
+                const lastCheckinTime = ref('');
+                const daysSinceCheckin = ref(0);
+                const contacts = ref([]);
+                const newContact = ref({name:'', phone:'', relation:'friend'});
+                
+                // SOS 逻辑
+                const sosCount = ref(5);
+                const sosTimer = ref(null);
+                const sosStatus = ref('即将通知紧急联系人');
+
+                // API Base URL
+                const API_URL = 'http://localhost:8000/api';
+
+                // 计算属性：状态样式
+                const isSafe = computed(() => daysSinceCheckin.value < 2);
+                const statusCardClass = computed(() => {
+                    if (daysSinceCheckin.value < 2) return 'bg-emerald-500 border-emerald-400';
+                    if (daysSinceCheckin.value < 3) return 'bg-amber-500 border-amber-400';
+                    return 'bg-rose-500 border-rose-400';
+                });
+                const statusText = computed(() => {
+                    if (daysSinceCheckin.value < 2) return '状态：安全';
+                    if (daysSinceCheckin.value < 3) return '警告：未签到';
+                    return '危险：即将通知';
+                });
+                const statusIcon = computed(() => isSafe.value ? 'solar:shield-check-bold' : 'solar:danger-circle-bold');
+                const todayDate = computed(() => new Date().toLocaleDateString('zh-CN'));
+
+                // 方法
+                const fetchStatus = async () => {
+                    try {
+                        const res = await axios.get(`${API_URL}/status`);
+                        lastCheckinTime.value = res.data.last_checkin_time;
+                        daysSinceCheckin.value = res.data.days_since;
+                    } catch (e) { console.error(e); }
+                };
+
+                const doCheckin = async () => {
+                    await axios.post(`${API_URL}/checkin`);
+                    await fetchStatus();
+                    alert('签到成功！');
+                };
+
+                const getContacts = async () => {
+                    const res = await axios.get(`${API_URL}/contacts`);
+                    contacts.value = res.data;
+                };
+
+                const addContact = async () => {
+                    if(!newContact.value.name) return;
+                    await axios.post(`${API_URL}/contacts`, newContact.value);
+                    newContact.value = {name:'', phone:'', relation:'friend'};
+                    getContacts();
+                };
+
+                // SOS 流程
+                const triggerSosPre = () => {
+                    currentView.value = 'sos';
+                    sosCount.value = 5;
+                    sosStatus.value = '即将发送求助信息';
+                    sosTimer.value = setInterval(() => {
+                        sosCount.value--;
+                        if(sosCount.value <= 0) {
+                            clearInterval(sosTimer.value);
+                            sendSosReal();
+                        }
+                    }, 1000);
+                };
+
+                const sendSosReal = async () => {
+                    sosStatus.value = '已发送！正在拨号...';
+                    await axios.post(`${API_URL}/sos`);
+                };
+
+                const cancelSos = () => {
+                    clearInterval(sosTimer.value);
+                    currentView.value = 'home';
+                };
+
+                // 日历样式辅助
+                const getDayClass = (day) => {
+                    // 这里仅作演示，实际应对比API返回的logs
+                    if (day === 16) return 'bg-emerald-100 text-emerald-700 font-bold border-2 border-emerald-500'; // 今天
+                    return 'bg-slate-50 text-slate-400';
+                };
+
+                onMounted(async () => {
+                    // 模拟启动页自动签到逻辑
+                    setTimeout(async () => {
+                        await doCheckin(); // 启动即签到
+                        await getContacts();
+                        currentView.value = 'home';
+                    }, 1500);
+
+                    // 时钟
+                    setInterval(() => {
+                        const now = new Date();
+                        currentTime.value = `${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`;
+                    }, 1000);
+                });
+
+                return {
+                    currentView, currentTime, lastCheckinTime, daysSinceCheckin, 
+                    contacts, newContact, sosCount, sosStatus, isSafe,
+                    statusCardClass, statusText, statusIcon, todayDate,
+                    doCheckin, addContact, triggerSosPre, cancelSos, getDayClass
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
